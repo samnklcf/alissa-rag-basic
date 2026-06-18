@@ -1,108 +1,147 @@
-# Alissa RAG — Exemple end-to-end
 
-RAG (Retrieval-Augmented Generation) avec **Turso** (base vectorielle), un modèle d'embedding **open source local**, **GPT-4o-mini** pour la génération, et **ingestion de PDF** avec comptage de tokens.
+# Alissa RAG — Exemple End-to-End
 
-## Stack
+Projet de démonstration d'un pipeline **RAG** (Retrieval-Augmented Generation) complet. Il intègre **Turso** comme base vectorielle native, un modèle d'embedding **open-source local**, **GPT-4o-mini** (ou **Gemini**) pour la génération, et un système d'**ingestion de PDF** avec suivi des tokens et calcul des coûts.
 
-- **Embeddings** : `Xenova/multilingual-e5-small` via `@huggingface/transformers` — local, gratuit, multilingue (bon français), 384 dimensions.
-- **Base vectorielle** : Turso / libSQL, colonne `F32_BLOB` native + index ANN cosinus.
-- **LLM** : `gpt-4o-mini` (OpenAI).
-- **Ingestion PDF** : `pdfjs-dist` (extraction texte) + chunking maison.
-- **Comptage de tokens** : `tiktoken` (estimation locale) + chiffres réels de l'API OpenAI.
-- **Serveur** : Express.js (sert aussi le front de test).
+## Stack Technique
 
-## Arborescence
+- **Embeddings** : `Xenova/multilingual-e5-small` via `@huggingface/transformers` — local, gratuit, performant en français (384 dimensions).
+- **Base vectorielle** : Turso / libSQL (colonne `F32_BLOB` native + index ANN cosinus).
+- **LLMs** : `gpt-4o-mini` (OpenAI) ou `Gemini` (Google).
+- **Ingestion PDF** : `pdfjs-dist` (extraction de texte brut) + découpage (chunking) personnalisé.
+- **Comptage de tokens** : `tiktoken` (estimation locale) + métriques réelles des API.
+- **Serveur** : Express.js (API REST + service de l'interface de test).
 
-```
+---
+
+## Arborescence du Projet
+
+```text
 alissa-rag/
 ├── package.json
 ├── .env.example
 ├── README.md
 ├── public/
-│   └── index.html              # front de test (Tailwind + Font Awesome) : chat + upload PDF + tokens
+│   └── index.html              # Interface de test (Tailwind + Font Awesome) : chat, upload & tokens
 ├── src/
-│   ├── config/config.js        # variables d'environnement centralisées
-│   ├── embeddings/embeddings.js # génération des vecteurs (modèle local)
-│   ├── db/db.js                # client Turso, schéma, insertion (simple + batch), recherche
+│   ├── config/config.js        # Centralisation des variables d'environnement
+│   ├── embeddings/embeddings.js # Génération locale des vecteurs
+│   ├── db/db.js                # Client Turso, schéma, requêtes ANN (simple + batch)
 │   ├── pdf/
-│   │   ├── extract.js          # extraction du texte d'un PDF
-│   │   ├── chunk.js            # découpage en passages avec chevauchement
-│   │   └── ingest.js           # orchestration : extract → chunk → embed → insert
-│   ├── tokens/counter.js       # comptage de tokens + calcul du coût
-│   └── server/server.js        # serveur Express + endpoints
-└── scripts/seed.js             # indexation de contenus d'exemple
+│   │   ├── extract.js          # Extraction du texte brut des PDF
+│   │   ├── chunk.js            # Découpage des textes en passages avec chevauchement
+│   │   └── ingest.js           # Orchestration : Extraction ➔ Chunking ➔ Embedding ➔ Insertion
+│   ├── tokens/counter.js       # Calcul des tokens et estimation des coûts financiers
+│   └── server/
+│       ├── server.js           # Serveur configuré pour Google Gemini
+│       └── server-open-ai.js   # Serveur configuré pour OpenAI
+└── scripts/seed.js             # Script pour indexer rapidement des données de test
+
 ```
 
-## Installation
+---
+
+## Installation et Configuration
+
+### 1. Cloner et installer les dépendances
 
 ```bash
 npm install
-cp .env.example .env
-# Renseigne TURSO_DATABASE_URL, TURSO_AUTH_TOKEN et OPENAI_API_KEY
+
 ```
 
-> Au premier lancement, le modèle d'embedding (~120 Mo) est téléchargé et mis en cache.
+### 2. Configurer les variables d'environnement
 
-## Lancement avec Gemini
+Copiez le fichier d'exemple :
 
 ```bash
+cp .env.example .env
+
+```
+
+Ouvrez le fichier `.env` et complétez les variables selon vos besoins :
+
+```env
+TURSO_DATABASE_URL=your_turso_database_url
+TURSO_AUTH_TOKEN=your_turso_auth_token
+OPENAI_API_KEY=your_openai_api_key   # Requis pour le script OpenAI
+GEMINI_API_KEY=your_gemini_api_key   # Requis pour le script Gemini
+
+```
+
+> 💡 **Note sur les Embeddings** : Au tout premier lancement, le modèle d'embedding (~120 Mo) est automatiquement téléchargé et mis en cache localement dans votre projet. Les lancements suivants seront instantanés.
+
+---
+
+## Lancement de l'Application
+
+Démarrez le serveur selon le fournisseur de LLM que vous souhaitez exploiter :
+
+```bash
+# Pour utiliser OpenAI (GPT-4o-mini)
+npm run openai
+
+# Pour utiliser Google Gemini
 npm run gemini
 
 ```
 
-## Lancement avec GPT de OPEN AI
+---
+
+## Guide d'Utilisation
+
+1. Ouvrez votre navigateur et accédez à : `http://localhost:3000`
+2. **Indexation** : Cliquez sur le bouton **« Ajouter un PDF »** en haut à droite. Le document est extrait, découpé en segments (chunks), vectorisé localement puis stocké dans Turso.
+3. **Recherche & Chat** : Posez une question dans le chat. Le système récupère les segments les plus pertinents dans Turso, construit le prompt de contexte, et le LLM formule sa réponse.
+4. **Métriques** : Sous chaque réponse, les **sources utilisées** ainsi que le **coût financier précis** s'affichent en temps réel.
+
+### Points d'entrée de l'API (Endpoints)
+
+* `POST /upload` — *(Multipart)* Reçoit le fichier dans le champ `pdf` + métadonnées optionnelles `matiere` et `niveau`. Indexe le document.
+* `POST /documents` — `{ contenu, matiere, niveau }`. Permet l'indexation manuelle d'un texte brut sans passer par un PDF.
+* `POST /ask` — `{ question }`. Retourne la `reponse`, les `sources` correspondantes et l'objet de consommation `usage`.
+
+#### Exemples de requêtes cURL
 
 ```bash
-npm run openai
-cp .env.example .env
-# Renseigne TURSO_DATABASE_URL, TURSO_AUTH_TOKEN et OPENAI_API_KEY
-```
-
-
-## Utilisation
-
-1. **Démarrer le serveur** : `npm run openai`
-2. **Ouvrir l'interface** : http://localhost:3000
-3. **Ajouter un PDF** : bouton « Ajouter un PDF » en haut à droite. Le PDF est extrait, découpé en passages, vectorisé et indexé dans Turso.
-4. **Poser une question** : l'IA cherche dans tous les PDF indexés et répond. Sous chaque réponse s'affichent les sources consultées et les tokens (contexte / sortie) avec le coût estimé.
-
-### Endpoints
-
-- `POST /upload` — multipart, champ `pdf` + `matiere`/`niveau` optionnels. Indexe un PDF.
-- `POST /ask` — `{ question }`. Renvoie `reponse`, `sources` et `usage` (tokens + coût).
-- `POST /documents` — `{ contenu, matiere, niveau }`. Ajout manuel d'un texte.
-
-```bash
-# Upload d'un PDF
+# Téléverser et indexer un fichier PDF
 curl -X POST http://localhost:3000/upload \
   -F "pdf=@manuel-maths-4eme.pdf" \
-  -F "matiere=Mathématiques" -F "niveau=4ème"
+  -F "matiere=Mathématiques" \
+  -F "niveau=4ème"
 
-# Question
+# Poser une question au système RAG
 curl -X POST http://localhost:3000/ask \
   -H "Content-Type: application/json" \
   -d '{"question": "Explique le théorème de Pythagore"}'
+
 ```
 
-## Comptage de tokens
+---
 
-Le champ `usage` de `/ask` contient :
-- `contexteTokens` : tokens envoyés au modèle (prompt système + question), d'après l'API OpenAI.
-- `sortieTokens` : tokens de la réponse générée.
-- `totalTokens` : somme.
-- `contexteTokensEstime` : estimation locale via tiktoken (pour comparaison/anticipation).
-- `cout` : coût en USD (entrée / sortie / total), basé sur la grille GPT-4o-mini.
+## Gestion des Limites & Métriques
 
-> Les tarifs sont définis dans `src/tokens/counter.js` (`PRIX_INPUT_PAR_M`, `PRIX_OUTPUT_PAR_M`). Vérifie-les sur la grille OpenAI à jour.
+### Suivi des tokens et des coûts
 
-## Notes sur les PDF
+L'objet `usage` renvoyé par l'endpoint `/ask` fournit une transparence totale sur la consommation :
 
-- Les PDF **scannés** (images sans couche texte) ne donneront rien à l'extraction : il faudrait y ajouter de l'OCR (ex : Tesseract). Le serveur renvoie une erreur explicite dans ce cas.
-- Le chunking est réglable dans `src/pdf/chunk.js` (`TAILLE_CIBLE`, `CHEVAUCHEMENT`).
+* `contexteTokens` : Volume consommé par le prompt système et la question (chiffre réel fourni par l'API).
+* `sortieTokens` : Volume de tokens généré pour la réponse.
+* `contexteTokensEstime` : Estimation calculée côté serveur par `tiktoken` avant l'envoi (utile pour anticiper les dépassements de limites).
+* `cout` : Calcul en USD basé sur la grille tarifaire active (configurable dans `src/tokens/counter.js`).
 
-## Pistes d'amélioration
+### Traitement des PDF
 
-- **Re-ranking** : récupérer top-k=10 puis re-classer avec un cross-encoder.
-- **Filtrage** : pré-filtrer la recherche par `matiere`/`niveau`.
-- **OCR** : gérer les PDF scannés.
-- **Suivi des coûts** : agréger les `usage` par élève pour piloter la marge.
+* **PDF Scannés** : L'extraction actuelle repose uniquement sur la couche texte des documents. Les PDF d'origine "image" (scans sans couche texte) renverront une erreur explicite.
+* **Ajustements** : La taille des segments (`TAILLE_CIBLE`) et la zone de recouvrement (`CHEVAUCHEMENT`) sont modifiables directement dans `src/pdf/chunk.js`.
+
+---
+
+## Pistes d'Amélioration
+
+* **Re-ranking** : Récupérer un Top-K large (ex: 10 segments) dans Turso, puis appliquer un modèle de *cross-encoder* local pour réordonner les résultats les plus pertinents.
+* **Filtrage Hybride** : Exploiter nativement les métadonnées `matiere` et `niveau` dans la clause SQL de recherche vectorielle pour cloisonner les recherches.
+* **Pipeline OCR** : Intégrer `Tesseract.js` pour gérer de manière transparente les PDF scannés et les images.
+* **Suivi Analytique** : Associer chaque requête à un identifiant utilisateur/élève afin d'agréger les coûts et piloter les marges de l'application.
+
+
