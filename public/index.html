@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Alissa RAG — Test</title>
+
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.2/css/all.min.css" />
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            "alissa-violet": "#521260",
+            "alissa-gold": "#F6C136",
+            "alissa-dark": "#0e0a10",
+          },
+          fontFamily: { sora: ["Sora", "sans-serif"] },
+        },
+      },
+    };
+  </script>
+
+  <style>
+    body { font-family: "Sora", sans-serif; }
+    @keyframes fadeInUp { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-in { animation: fadeInUp 0.3s ease-out; }
+    @keyframes blink { 0%, 80%, 100% { opacity: 0.2; } 40% { opacity: 1; } }
+    .dot { animation: blink 1.4s infinite both; }
+    .dot:nth-child(2) { animation-delay: 0.2s; }
+    .dot:nth-child(3) { animation-delay: 0.4s; }
+
+    /* Styles pour le rendu du Markdown généré par l'IA */
+    .prose p { margin-bottom: 0.75rem; }
+    .prose p:last-child { margin-bottom: 0; }
+    .prose strong { color: #F6C136; font-weight: 600; }
+    .prose ul { list-style-type: disc; margin-left: 1.25rem; margin-bottom: 0.75rem; }
+    .prose ol { list-style-type: decimal; margin-left: 1.25rem; margin-bottom: 0.75rem; }
+    .prose li { margin-bottom: 0.25rem; }
+    .prose h1, .prose h2, .prose h3 { font-weight: 700; color: white; margin-top: 1rem; margin-bottom: 0.5rem; }
+    .prose h1 { font-size: 1.25rem; }
+    .prose h2 { font-size: 1.1rem; }
+    .prose code { background: rgba(255,255,255,0.1); padding: 0.1rem 0.3rem; rounded: 4px; font-family: monospace; font-size: 0.85rem; }
+  </style>
+</head>
+
+<body class="bg-alissa-dark text-white min-h-screen flex flex-col">
+
+  <header class="border-b border-white/10 px-6 py-4 flex items-center gap-3">
+    <div class="w-10 h-10 rounded-xl bg-alissa-violet flex items-center justify-center">
+      <i class="fa-solid fa-graduation-cap text-alissa-gold text-lg"></i>
+    </div>
+    <div>
+      <h1 class="text-lg font-semibold leading-tight">Alissa <span class="text-alissa-gold">RAG</span></h1>
+      <p class="text-xs text-white/50">Interface de test — Turso + GPT-4o-mini</p>
+    </div>
+    <button id="openUpload" class="ml-auto text-xs px-3 py-2 rounded-lg bg-alissa-violet hover:brightness-125 transition flex items-center gap-2 border border-alissa-gold/20">
+      <i class="fa-solid fa-file-arrow-up text-alissa-gold"></i>
+      <span>Ajouter un PDF</span>
+    </button>
+  </header>
+
+  <main class="flex-1 overflow-y-auto px-4 py-6">
+    <div id="chat" class="max-w-3xl mx-auto space-y-6">
+      <div class="fade-in flex gap-3">
+        <div class="w-8 h-8 rounded-lg bg-alissa-violet flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-paw text-alissa-gold text-sm"></i>
+        </div>
+        <div class="bg-white/5 rounded-2xl rounded-tl-sm px-4 py-3 text-sm text-white/90 border border-white/10 max-w-[85%]">
+          Bonjour ! Je suis Alissa. Ajoute des PDF avec le bouton en haut à droite, puis pose-moi une question : j'irai chercher la réponse dans tes documents.
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="border-t border-white/10 px-4 py-4">
+    <div class="max-w-3xl mx-auto">
+      <div class="flex items-end gap-2 bg-white/5 rounded-2xl border border-white/10 px-3 py-2 focus-within:border-alissa-gold/40 transition-colors">
+        <textarea id="input" rows="1" placeholder="Pose ta question…"
+          class="flex-1 bg-transparent resize-none outline-none text-sm py-2 placeholder-white/30 max-h-32"></textarea>
+        <button id="send"
+          class="w-10 h-10 rounded-xl bg-alissa-gold text-alissa-dark flex items-center justify-center hover:brightness-110 active:scale-95 transition disabled:opacity-40 disabled:cursor-not-allowed shrink-0">
+          <i class="fa-solid fa-paper-plane"></i>
+        </button>
+      </div>
+      <p class="text-center text-[11px] text-white/30 mt-2">
+        Les réponses s'appuient sur les documents indexés dans Turso.
+      </p>
+    </div>
+  </footer>
+
+  <div id="uploadModal" class="hidden fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center px-4">
+    <div class="bg-alissa-dark border border-white/10 rounded-2xl w-full max-w-md p-6 fade-in">
+      <div class="flex items-center justify-between mb-4">
+        <h2 class="text-lg font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-file-pdf text-alissa-gold"></i> Ajouter un document
+        </h2>
+        <button id="closeUpload" class="text-white/40 hover:text-white transition">
+          <i class="fa-solid fa-xmark text-lg"></i>
+        </button>
+      </div>
+
+      <label id="dropZone" for="pdfInput"
+        class="block border-2 border-dashed border-white/15 rounded-xl px-4 py-8 text-center cursor-pointer hover:border-alissa-gold/40 transition mb-4">
+        <i class="fa-solid fa-cloud-arrow-up text-3xl text-alissa-gold/70 mb-2"></i>
+        <p id="dropLabel" class="text-sm text-white/60">Clique ou glisse un fichier PDF ici</p>
+        <input id="pdfInput" type="file" accept="application/pdf" class="hidden" />
+      </label>
+
+      <div class="grid grid-cols-2 gap-3 mb-4">
+        <div>
+          <label class="text-[11px] text-white/40 block mb-1">Matière (optionnel)</label>
+          <input id="matiere" type="text" placeholder="Ex : Mathématiques"
+            class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-alissa-gold/40 transition" />
+        </div>
+        <div>
+          <label class="text-[11px] text-white/40 block mb-1">Niveau (optionnel)</label>
+          <input id="niveau" type="text" placeholder="Ex : 4ème"
+            class="w-full bg-white/5 border border-white/10 rounded-lg px-3 py-2 text-sm outline-none focus:border-alissa-gold/40 transition" />
+        </div>
+      </div>
+
+      <button id="uploadBtn"
+        class="w-full py-3 rounded-xl bg-alissa-gold text-alissa-dark font-medium hover:brightness-110 active:scale-[0.98] transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+        <i class="fa-solid fa-arrow-up-from-bracket"></i>
+        <span id="uploadBtnLabel">Indexer le PDF</span>
+      </button>
+
+      <div id="uploadStatus" class="mt-3 text-sm text-center"></div>
+    </div>
+  </div>
+
+  <script>
+    // Configuration globale de Marked pour la sécurité
+    marked.setOptions({ sanitize: true, breaks: true });
+
+    const chat = document.getElementById("chat");
+    const input = document.getElementById("input");
+    const sendBtn = document.getElementById("send");
+
+    input.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = input.scrollHeight + "px";
+    });
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); }
+    });
+    sendBtn.addEventListener("click", ask);
+
+    function addUserMessage(text) {
+      const el = document.createElement("div");
+      el.className = "fade-in flex gap-3 justify-end";
+      el.innerHTML = `
+        <div class="bg-alissa-violet rounded-2xl rounded-tr-sm px-4 py-3 text-sm max-w-[80%] whitespace-pre-wrap">${escapeHtml(text)}</div>
+        <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-user text-white/60 text-sm"></i>
+        </div>`;
+      chat.appendChild(el);
+      scrollDown();
+    }
+
+    function addAlissaMessage(innerHtml) {
+      const el = document.createElement("div");
+      el.className = "fade-in flex gap-3";
+      el.innerHTML = `
+        <div class="w-8 h-8 rounded-lg bg-alissa-violet flex items-center justify-center shrink-0">
+          <i class="fa-solid fa-paw text-alissa-gold text-sm"></i>
+        </div>
+        <div class="bg-white/5 rounded-2xl rounded-tl-sm px-5 py-4 text-sm text-white/90 border border-white/10 flex-1 max-w-[88%]">
+          <div class="message-body">${innerHtml}</div>
+        </div>`;
+      chat.appendChild(el);
+      scrollDown();
+      return el.querySelector(".message-body");
+    }
+
+    const loadingHtml = `
+      <span class="flex gap-1 items-center py-1">
+        <span class="dot w-2 h-2 rounded-full bg-alissa-gold inline-block"></span>
+        <span class="dot w-2 h-2 rounded-full bg-alissa-gold inline-block"></span>
+        <span class="dot w-2 h-2 rounded-full bg-alissa-gold inline-block"></span>
+      </span>`;
+
+    // Fonction pour basculer l'affichage des extraits de source
+    window.toggleSource = function(index, uniqueId) {
+      const content = document.getElementById(`source-content-${uniqueId}-${index}`);
+      const icon = document.getElementById(`source-icon-${uniqueId}-${index}`);
+      if (content.classList.contains('hidden')) {
+        content.classList.remove('hidden');
+        icon.classList.add('rotate-180');
+      } else {
+        content.classList.add('hidden');
+        icon.classList.remove('rotate-180');
+      }
+    }
+
+    async function ask() {
+      const question = input.value.trim();
+      if (!question) return;
+      input.value = "";
+      input.style.height = "auto";
+      sendBtn.disabled = true;
+      addUserMessage(question);
+      const body = addAlissaMessage(loadingHtml);
+      const uniqueId = Date.now(); // ID unique pour éviter les conflits d'interactivité entre messages
+
+      try {
+        const res = await fetch("/ask", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question }),
+        });
+        if (!res.ok) throw new Error("Erreur serveur");
+        const data = await res.json();
+
+        // 1. Parsing du Markdown renvoyé par l'IA
+        let parsedResponse = marked.parse(data.reponse);
+        let html = `<div class="prose leading-relaxed text-white/95">${parsedResponse}</div>`;
+
+        // 2. Section Sources stylisée avec Accordéons interactifs
+        if (data.sources && data.sources.length) {
+          html += `
+            <div class="mt-4 pt-4 border-t border-white/10">
+              <p class="text-[11px] font-medium tracking-wider uppercase text-white/40 mb-2.5 flex items-center gap-1.5">
+                <i class="fa-solid fa-book-open text-alissa-gold text-xs"></i> Base de connaissances consultée
+              </p>
+              <div class="space-y-2">
+                ${data.sources.map((s, idx) => {
+                  const scoreMatch = s.distance ? `(Score: ${(1 - s.distance).toFixed(2)})` : '';
+                  return `
+                  <div class="bg-white/[0.02] border border-white/5 rounded-xl overflow-hidden transition hover:border-white/10">
+                    <button onclick="toggleSource(${idx}, '${uniqueId}')" class="w-full text-left px-3 py-2.5 flex items-center justify-between gap-2 hover:bg-white/[0.02] transition">
+                      <div class="flex flex-wrap items-center gap-2 text-xs">
+                        <span class="px-2 py-0.5 rounded bg-alissa-violet/50 border border-alissa-gold/20 text-alissa-gold font-medium">
+                          ${escapeHtml(s.matiere || "Général")} ${s.niveau ? '· ' + escapeHtml(s.niveau) : ''}
+                        </span>
+                        <span class="text-white/60 truncate max-w-[180px] sm:max-w-[280px]">
+                          <i class="fa-solid fa-file-pdf text-[10px] text-red-400 mr-1"></i>${escapeHtml(s.source || "Document")}
+                        </span>
+                      </div>
+                      <div class="flex items-center gap-2 shrink-0 text-[11px] text-white/40">
+                        <span>${scoreMatch}</span>
+                        <i id="source-icon-${uniqueId}-${idx}" class="fa-solid fa-chevron-down transition-transform duration-200"></i>
+                      </div>
+                    </button>
+                    <div id="source-content-${uniqueId}-${idx}" class="hidden bg-black/20 border-t border-white/5 px-3 py-3 text-xs text-white/70 leading-relaxed italic whitespace-pre-wrap">
+                      ${escapeHtml(s.extrait || "Aucun extrait disponible.")}
+                    </div>
+                  </div>`;
+                }).join("")}
+              </div>
+            </div>`;
+        }
+
+        // 3. Compteur de tokens + Coût monétaire révisé
+        if (data.usage) {
+          const u = data.usage;
+          const cout = u.cout ? u.cout.totalUsd : 0;
+          html += `
+            <div class="mt-4 pt-3 border-t border-white/5 flex flex-wrap gap-2 text-[10px] text-white/40">
+              <span class="flex items-center gap-1 bg-white/[0.03] px-2 py-1 rounded border border-white/5">
+                <i class="fa-solid fa-arrow-right-to-bracket text-alissa-gold/70"></i> Contexte : <b>${u.contexteTokens}</b> tkn
+              </span>
+              <span class="flex items-center gap-1 bg-white/[0.03] px-2 py-1 rounded border border-white/5">
+                <i class="fa-solid fa-arrow-right-from-bracket text-alissa-gold/70"></i> Réponse : <b>${u.sortieTokens}</b> tkn
+              </span>
+              <span class="flex items-center gap-1 bg-white/[0.03] px-2 py-1 rounded border border-white/5 font-mono ml-auto">
+                <i class="fa-solid fa-coins text-alissa-gold/70"></i> $${cout.toFixed(6)}
+              </span>
+            </div>`;
+        }
+
+        body.innerHTML = html;
+      } catch (err) {
+        body.innerHTML = `<span class="text-red-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i>
+          Une erreur est survenue. Vérifie que le serveur tourne et qu'au moins un document est indexé.</span>`;
+      } finally {
+        sendBtn.disabled = false;
+        scrollDown();
+        input.focus();
+      }
+    }
+
+    /* ===== Upload PDF ===== */
+    const modal = document.getElementById("uploadModal");
+    const pdfInput = document.getElementById("pdfInput");
+    const dropLabel = document.getElementById("dropLabel");
+    const dropZone = document.getElementById("dropZone");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const uploadStatus = document.getElementById("uploadStatus");
+
+    document.getElementById("openUpload").addEventListener("click", () => modal.classList.remove("hidden"));
+    document.getElementById("closeUpload").addEventListener("click", () => modal.classList.add("hidden"));
+    modal.addEventListener("click", (e) => { if (e.target === modal) modal.classList.add("hidden"); });
+
+    pdfInput.addEventListener("change", () => {
+      if (pdfInput.files.length) dropLabel.textContent = pdfInput.files[0].name;
+    });
+
+    // Glisser-déposer
+    ["dragover", "dragenter"].forEach((ev) =>
+      dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.add("border-alissa-gold/60"); }));
+    ["dragleave", "drop"].forEach((ev) =>
+      dropZone.addEventListener(ev, (e) => { e.preventDefault(); dropZone.classList.remove("border-alissa-gold/60"); }));
+    dropZone.addEventListener("drop", (e) => {
+      if (e.dataTransfer.files.length) {
+        pdfInput.files = e.dataTransfer.files;
+        dropLabel.textContent = e.dataTransfer.files[0].name;
+      }
+    });
+
+    uploadBtn.addEventListener("click", async () => {
+      if (!pdfInput.files.length) {
+        uploadStatus.innerHTML = `<span class="text-alissa-gold">Choisis d'abord un fichier PDF.</span>`;
+        return;
+      }
+      const formData = new FormData();
+      formData.append("pdf", pdfInput.files[0]);
+      formData.append("matiere", document.getElementById("matiere").value);
+      formData.append("niveau", document.getElementById("niveau").value);
+
+      uploadBtn.disabled = true;
+      document.getElementById("uploadBtnLabel").textContent = "Indexation en cours…";
+      uploadStatus.innerHTML = `<span class="text-white/50">${loadingHtml}</span>`;
+
+      try {
+        const res = await fetch("/upload", { method: "POST", body: formData });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || "Erreur");
+
+        uploadStatus.innerHTML = `
+          <span class="text-green-400">
+            <i class="fa-solid fa-circle-check mr-1"></i>
+            ${data.chunks} passages indexés (${data.numPages} pages).
+          </span>`;
+        
+        addAlissaMessage(`<i class="fa-solid fa-file-circle-check text-alissa-gold mr-1"></i>
+          Le document <b>${escapeHtml(data.source)}</b> a été indexé : ${data.chunks} passages prêts à être interrogés.`);
+        
+        pdfInput.value = "";
+        dropLabel.textContent = "Clique ou glisse un fichier PDF ici";
+        setTimeout(() => modal.classList.add("hidden"), 1500);
+      } catch (err) {
+        uploadStatus.innerHTML = `<span class="text-red-400"><i class="fa-solid fa-triangle-exclamation mr-1"></i> ${escapeHtml(err.message)}</span>`;
+      } finally {
+        uploadBtn.disabled = false;
+        document.getElementById("uploadBtnLabel").textContent = "Indexer le PDF";
+      }
+    });
+
+    function scrollDown() {
+      requestAnimationFrame(() => {
+        const main = document.querySelector("main");
+        main.scrollTop = main.scrollHeight;
+      });
+    }
+    function escapeHtml(str) {
+      if (!str) return "";
+      const div = document.createElement("div");
+      div.textContent = str;
+      return div.innerHTML;
+    }
+  </script>
+</body>
+</html>
